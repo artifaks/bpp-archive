@@ -1,24 +1,34 @@
 #!/usr/bin/env python3
 """
-Black Panther Newspaper Archive — local web interface.
-Run:  python3 app.py
-Then open:  http://localhost:5050
+Black Panther Newspaper Archive — web interface.
+Supports SQLite (local) and PostgreSQL/Supabase (production).
+Run locally:  python3 app.py
 """
 
 import os
-import sqlite3
 from pathlib import Path
 from flask import Flask, render_template, request, jsonify, g
 
-DB_PATH = Path(os.environ.get("DB_PATH", Path(__file__).parent / "black_panther_newspaper.db"))
+DATABASE_URL = os.environ.get("DATABASE_URL")  # set in Railway for production
+SQLITE_PATH  = Path(os.environ.get("DB_PATH", Path(__file__).parent / "black_panther_newspaper.db"))
+
+USE_POSTGRES = bool(DATABASE_URL)
 
 app = Flask(__name__)
 
 
+# ── Database connection ────────────────────────────────────────────────────────
+
 def get_db():
     if "db" not in g:
-        g.db = sqlite3.connect(DB_PATH)
-        g.db.row_factory = sqlite3.Row
+        if USE_POSTGRES:
+            import psycopg2
+            from psycopg2.extras import RealDictCursor
+            g.db = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+        else:
+            import sqlite3
+            g.db = sqlite3.connect(SQLITE_PATH)
+            g.db.row_factory = sqlite3.Row
     return g.db
 
 
@@ -29,18 +39,34 @@ def close_db(_):
         db.close()
 
 
+def query(sql, params=()):
+    """Run a SELECT and return all rows."""
+    if USE_POSTGRES:
+        # convert SQLite ? placeholders to %s
+        sql = sql.replace("?", "%s")
+    db = get_db()
+    cur = db.cursor()
+    cur.execute(sql, params)
+    return cur.fetchall()
+
+
+def queryrow(sql, params=()):
+    rows = query(sql, params)
+    return rows[0] if rows else None
+
+
+# ── Routes ─────────────────────────────────────────────────────────────────────
+
 @app.route("/")
 def index():
-    db = get_db()
-    stats = db.execute("""
+    stats = queryrow("""
         SELECT
             (SELECT COUNT(*) FROM issues)      AS total_issues,
             (SELECT COUNT(*) FROM issue_text)  AS indexed,
             (SELECT MIN(pub_date) FROM issues) AS earliest,
             (SELECT MAX(pub_date) FROM issues) AS latest
-    """).fetchone()
-
-    volumes = db.execute("""
+    """)
+    volumes = query("""
         SELECT volume,
                COUNT(*) as issue_count,
                MIN(pub_date) as start_date,
@@ -48,85 +74,107 @@ def index():
         FROM issues
         GROUP BY volume
         ORDER BY volume
-    """).fetchall()
-
+    """)
     return render_template("index.html", stats=stats, volumes=volumes)
 
 
 @app.route("/search")
 def search():
-    query   = request.args.get("q", "").strip()
+    q       = request.args.get("q", "").strip()
     volume  = request.args.get("vol", "")
     year    = request.args.get("year", "")
     page    = int(request.args.get("page", 1))
     per_page = 10
     offset  = (page - 1) * per_page
 
-    if not query:
-        return render_template("search.html", query="", results=[], total=0, page=1, pages=1)
+    years = query("SELECT DISTINCT EXTRACT(YEAR FROM pub_date)::text AS y FROM issues ORDER BY y" if USE_POSTGRES
+                  else "SELECT DISTINCT strftime('%Y', pub_date) as y FROM issues ORDER BY y")
 
-    db = get_db()
+    if not q:
+        return render_template("search.html", query="", results=[], total=0,
+                               page=1, pages=1, indexed=0, years=years)
 
-    indexed = db.execute("SELECT COUNT(*) FROM issue_text").fetchone()[0]
+    indexed = (queryrow("SELECT COUNT(*) AS n FROM issue_text") or {}).get("n", 0)
 
-    where_clauses = ["issues_fts MATCH ?"]
-    params = [query]
+    if USE_POSTGRES:
+        results, total = _search_postgres(q, volume, year, per_page, offset)
+    else:
+        results, total = _search_sqlite(q, volume, year, per_page, offset)
 
-    if volume:
-        where_clauses.append("i.volume = ?")
-        params.append(int(volume))
-    if year:
-        where_clauses.append("strftime('%Y', i.pub_date) = ?")
-        params.append(year)
-
-    join_clause = "JOIN issues i ON fts.rowid = i.id"
-    left_join   = "LEFT JOIN issue_text it ON it.issue_id = i.id"
-    where_str   = " AND ".join(where_clauses)
-
-    count_sql = f"""
-        SELECT COUNT(*) FROM issues_fts fts
-        {join_clause}
-        WHERE {where_str}
-    """
-    total = db.execute(count_sql, params).fetchone()[0]
-
-    results_sql = f"""
-        SELECT
-            i.id,
-            i.volume,
-            i.issue,
-            i.pub_date,
-            i.url,
-            it.page_count,
-            snippet(issues_fts, 0, '<mark>', '</mark>', '…', 48) AS snippet
-        FROM issues_fts fts
-        {join_clause}
-        {left_join}
-        WHERE {where_str}
-        ORDER BY rank
-        LIMIT ? OFFSET ?
-    """
-    results = db.execute(results_sql, params + [per_page, offset]).fetchall()
     pages = max(1, (total + per_page - 1) // per_page)
-
-    years = db.execute(
-        "SELECT DISTINCT strftime('%Y', pub_date) as y FROM issues ORDER BY y"
-    ).fetchall()
-
     return render_template("search.html",
-        query=query, results=results, total=total,
+        query=q, results=results, total=total,
         page=page, pages=pages, per_page=per_page,
         volume=volume, year=year,
         indexed=indexed, years=years,
     )
 
 
+def _search_postgres(q, volume, year, per_page, offset):
+    import psycopg2
+    where  = ["it.search_vec @@ plainto_tsquery('english', %s)"]
+    params = [q]
+    if volume:
+        where.append("i.volume = %s"); params.append(int(volume))
+    if year:
+        where.append("EXTRACT(YEAR FROM i.pub_date)::text = %s"); params.append(year)
+
+    where_str = " AND ".join(where)
+    total = (queryrow(f"""
+        SELECT COUNT(*) AS n FROM issue_text it
+        JOIN issues i ON i.id = it.issue_id
+        WHERE {where_str}
+    """, params) or {}).get("n", 0)
+
+    results = query(f"""
+        SELECT i.id, i.volume, i.issue, i.pub_date::text AS pub_date, i.url,
+               it.page_count,
+               ts_headline('english', it.full_text,
+                   plainto_tsquery('english', %s),
+                   'MaxWords=50, MinWords=20, StartSel=<mark>, StopSel=</mark>, MaxFragments=1'
+               ) AS snippet
+        FROM issue_text it
+        JOIN issues i ON i.id = it.issue_id
+        WHERE {where_str}
+        ORDER BY ts_rank(it.search_vec, plainto_tsquery('english', %s)) DESC
+        LIMIT %s OFFSET %s
+    """, [q] + params + [per_page, offset])
+    return results, total
+
+
+def _search_sqlite(q, volume, year, per_page, offset):
+    where  = ["issues_fts MATCH ?"]
+    params = [q]
+    if volume:
+        where.append("i.volume = ?"); params.append(int(volume))
+    if year:
+        where.append("strftime('%Y', i.pub_date) = ?"); params.append(year)
+
+    where_str = " AND ".join(where)
+    total = (queryrow(f"""
+        SELECT COUNT(*) AS n FROM issues_fts fts
+        JOIN issues i ON fts.rowid = i.id
+        WHERE {where_str}
+    """, params) or {}).get("n", 0)
+
+    results = query(f"""
+        SELECT i.id, i.volume, i.issue, i.pub_date, i.url,
+               it.page_count,
+               snippet(issues_fts, 0, '<mark>', '</mark>', '…', 48) AS snippet
+        FROM issues_fts fts
+        JOIN issues i ON fts.rowid = i.id
+        LEFT JOIN issue_text it ON it.issue_id = i.id
+        WHERE {where_str}
+        ORDER BY rank
+        LIMIT ? OFFSET ?
+    """, params + [per_page, offset])
+    return results, total
+
+
 @app.route("/browse")
 def browse():
     volume = request.args.get("vol", "1")
-    db = get_db()
-
-    issues = db.execute("""
+    issues = query("""
         SELECT i.id, i.volume, i.issue, i.pub_date, i.url,
                it.page_count,
                CASE WHEN it.issue_id IS NOT NULL THEN 1 ELSE 0 END as indexed
@@ -134,42 +182,34 @@ def browse():
         LEFT JOIN issue_text it ON it.issue_id = i.id
         WHERE i.volume = ?
         ORDER BY i.pub_date
-    """, (volume,)).fetchall()
-
-    volumes = db.execute(
-        "SELECT DISTINCT volume FROM issues ORDER BY volume"
-    ).fetchall()
-
+    """, (volume,))
+    volumes = query("SELECT DISTINCT volume FROM issues ORDER BY volume")
     return render_template("browse.html", issues=issues, volumes=volumes, current_vol=int(volume))
 
 
 @app.route("/issue/<int:issue_id>")
 def issue_detail(issue_id):
-    db = get_db()
-    issue = db.execute("""
+    issue = queryrow("""
         SELECT i.*, it.full_text, it.page_count, it.indexed_at
         FROM issues i
         LEFT JOIN issue_text it ON it.issue_id = i.id
         WHERE i.id = ?
-    """, (issue_id,)).fetchone()
-
+    """, (issue_id,))
     if not issue:
         return "Issue not found", 404
-
     return render_template("issue.html", issue=issue)
 
 
 @app.route("/api/progress")
 def api_progress():
-    db = get_db()
-    row = db.execute("""
-        SELECT
-            (SELECT COUNT(*) FROM issues)     AS total,
-            (SELECT COUNT(*) FROM issue_text) AS indexed
-    """).fetchone()
+    row = queryrow("""
+        SELECT (SELECT COUNT(*) FROM issues)     AS total,
+               (SELECT COUNT(*) FROM issue_text) AS indexed
+    """)
     return jsonify({"total": row["total"], "indexed": row["indexed"]})
 
 
 if __name__ == "__main__":
-    print("Black Panther Archive running at http://localhost:5050")
+    print(f"Mode: {'PostgreSQL (Supabase)' if USE_POSTGRES else 'SQLite (local)'}")
+    print("Running at http://localhost:5050")
     app.run(port=5050, debug=False)
