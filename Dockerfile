@@ -13,4 +13,4 @@ ENV DB_PATH=/data/black_panther_newspaper.db
 
 EXPOSE 8080
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "60", "app:app"]
+CMD gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 60 app:app
