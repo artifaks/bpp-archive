@@ -138,7 +138,7 @@ def _search_postgres(q, volume, year, per_page, offset):
         WHERE {where_str}
         ORDER BY ts_rank(it.search_vec, plainto_tsquery('english', %s)) DESC
         LIMIT %s OFFSET %s
-    """, [q] + params + [per_page, offset])
+    """, [q] + params + [q, per_page, offset])
     return results, total
 
 
