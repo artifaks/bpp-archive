@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from flask import Flask, render_template, request, jsonify, g
 
-DATABASE_URL = os.environ.get("DATABASE_URL")  # set in Railway for production
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip().strip('"').strip("'") or None
 SQLITE_PATH  = Path(os.environ.get("DB_PATH", Path(__file__).parent / "black_panther_newspaper.db"))
 
 USE_POSTGRES = bool(DATABASE_URL)
