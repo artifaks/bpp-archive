@@ -1,0 +1,23 @@
+app = "bpp-archive"
+primary_region = "ewr"
+
+[build]
+
+[env]
+  DB_PATH = "/data/black_panther_newspaper.db"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+[[mounts]]
+  source = "bpp_data"
+  destination = "/data"

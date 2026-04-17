@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Black Panther Newspaper Archive{% endblock %}
+{% block content %}
+
+<style>
+  .hero { text-align: center; padding: 3rem 0 2rem; }
+  .hero h1 { font-size: 2.4rem; letter-spacing: .06em; text-transform: uppercase; }
+  .hero p  { color: var(--muted); font-family: sans-serif; margin-top: .5rem; font-size: .95rem; }
+
+  .search-big { display: flex; gap: .5rem; max-width: 600px; margin: 2rem auto; }
+  .search-big input {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--gold);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: Georgia, serif;
+    font-size: 1.05rem;
+    padding: .7rem 1.1rem;
+    outline: none;
+  }
+  .search-big input::placeholder { color: var(--muted); }
+  .search-big button {
+    background: var(--gold);
+    border: none;
+    border-radius: 6px;
+    color: var(--black);
+    cursor: pointer;
+    font-family: sans-serif;
+    font-size: .9rem;
+    font-weight: bold;
+    padding: .7rem 1.4rem;
+    letter-spacing: .04em;
+  }
+  .search-big button:hover { background: var(--gold-lt); }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin: 2rem 0;
+  }
+  .stat-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1.2rem;
+    text-align: center;
+  }
+  .stat-card .num {
+    font-size: 2rem;
+    color: var(--gold);
+    font-family: sans-serif;
+    font-weight: bold;
+  }
+  .stat-card .lbl {
+    font-family: sans-serif;
+    font-size: .75rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    margin-top: .25rem;
+  }
+
+  .indexing-banner {
+    background: var(--panel);
+    border: 1px solid var(--gold);
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 2rem;
+  }
+  .indexing-banner p { font-family: sans-serif; font-size: .85rem; color: var(--muted); margin-bottom: .5rem; }
+
+  .vol-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: .75rem;
+    margin-top: 1.5rem;
+  }
+  .vol-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    text-decoration: none;
+    transition: border-color .15s;
+  }
+  .vol-card:hover { border-color: var(--gold); text-decoration: none; }
+  .vol-card .vol-num { color: var(--gold); font-size: 1.1rem; font-weight: bold; }
+  .vol-card .vol-dates { color: var(--muted); font-family: sans-serif; font-size: .78rem; margin-top: .2rem; }
+  .vol-card .vol-count { color: var(--text); font-family: sans-serif; font-size: .82rem; margin-top: .4rem; }
+
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 2rem 0;
+  }
+
+  .quick-searches { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0 2rem; }
+  .quick-searches a {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    color: var(--text);
+    font-family: sans-serif;
+    font-size: .8rem;
+    padding: .3rem .85rem;
+    text-decoration: none;
+    transition: border-color .15s, color .15s;
+  }
+  .quick-searches a:hover { border-color: var(--gold); color: var(--gold); text-decoration: none; }
+</style>
+
+<div class="hero">
+  <h1>Black Panther <span style="color:var(--red)">★</span> Archive</h1>
+  <p>Official newspaper of the Black Panther Party &bull; 1967–1976 &bull; {{ stats['total_issues'] }} issues</p>
+</div>
+
+<form action="/search" method="get">
+  <div class="search-big">
+    <input type="search" name="q" placeholder="Search across all issues…" autofocus>
+    <button type="submit">Search</button>
+  </div>
+</form>
+
+<div class="quick-searches">
+  <span style="color:var(--muted);font-family:sans-serif;font-size:.8rem;align-self:center;">Try:</span>
+  {% for term in ["Ten Point Program", "Free Huey", "police brutality", "community control",
+                  "Eldridge Cleaver", "Bobby Seale", "breakfast program", "liberation"] %}
+  <a href="/search?q={{ term | urlencode }}">{{ term }}</a>
+  {% endfor %}
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="num">{{ stats['total_issues'] }}</div>
+    <div class="lbl">Total Issues</div>
+  </div>
+  <div class="stat-card">
+    <div class="num">15</div>
+    <div class="lbl">Volumes</div>
+  </div>
+  <div class="stat-card">
+    <div class="num" id="indexed-num">{{ stats['indexed'] }}</div>
+    <div class="lbl">Issues Indexed</div>
+  </div>
+  <div class="stat-card">
+    <div class="num">1967–1976</div>
+    <div class="lbl">Years Covered</div>
+  </div>
+</div>
+
+{% if stats['indexed'] < stats['total_issues'] %}
+<div class="indexing-banner">
+  <p id="progress-label">{{ stats['indexed'] }} of {{ stats['total_issues'] }} issues indexed
+    ({{ ((stats['indexed'] / stats['total_issues']) * 100) | int }}%) — indexing in background…</p>
+  <div class="progress-wrap">
+    <div class="progress-bar" id="progress-bar"
+         style="width: {{ ((stats['indexed'] / stats['total_issues']) * 100) | int }}%"></div>
+  </div>
+</div>
+{% endif %}
+
+<hr class="divider">
+<h2>Browse by Volume</h2>
+
+<div class="vol-grid">
+  {% for v in volumes %}
+  <a class="vol-card" href="/browse?vol={{ v['volume'] }}">
+    <div class="vol-num">Volume {{ v['volume'] }}</div>
+    <div class="vol-dates">{{ v['start_date'] }} → {{ v['end_date'] }}</div>
+    <div class="vol-count">{{ v['issue_count'] }} issues</div>
+  </a>
+  {% endfor %}
+</div>
+
+<script>
+  // update the indexed count live
+  function updateIndexedCount() {
+    fetch('/api/progress')
+      .then(r => r.json())
+      .then(d => {
+        const el = document.getElementById('indexed-num');
+        if (el) el.textContent = d.indexed;
+      });
+  }
+  setInterval(updateIndexedCount, 8000);
+</script>
+
+{% endblock %}

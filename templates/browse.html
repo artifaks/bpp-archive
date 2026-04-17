@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Browse Vol. {{ current_vol }} — Black Panther Archive{% endblock %}
+{% block content %}
+
+<style>
+  .browse-layout { display: grid; grid-template-columns: 160px 1fr; gap: 1.5rem; }
+
+  .vol-sidebar { }
+  .vol-sidebar h3 { color: var(--muted); font-family: sans-serif; font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .75rem; }
+  .vol-list { list-style: none; }
+  .vol-list li a {
+    display: block;
+    border-radius: 4px;
+    color: var(--text);
+    font-family: sans-serif;
+    font-size: .85rem;
+    padding: .35rem .65rem;
+    text-decoration: none;
+    transition: background .12s, color .12s;
+  }
+  .vol-list li a:hover { background: var(--panel); color: var(--gold-lt); }
+  .vol-list li a.active { background: var(--panel); border-left: 2px solid var(--gold); color: var(--gold); font-weight: bold; padding-left: .5rem; }
+
+  .issue-list { display: flex; flex-direction: column; gap: .6rem; }
+
+  .issue-row {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    display: grid;
+    grid-template-columns: 80px 120px 1fr auto;
+    align-items: center;
+    gap: 1rem;
+    padding: .8rem 1.1rem;
+    transition: border-color .15s;
+  }
+  .issue-row:hover { border-color: var(--gold); }
+  .issue-row.not-indexed { opacity: .6; }
+
+  .issue-row .num { color: var(--gold); font-family: sans-serif; font-size: .85rem; font-weight: bold; }
+  .issue-row .date { color: var(--muted); font-family: sans-serif; font-size: .82rem; }
+  .issue-row .status { }
+  .issue-row .actions { display: flex; gap: .75rem; }
+  .issue-row .actions a { color: var(--gold); font-family: sans-serif; font-size: .78rem; text-decoration: none; white-space: nowrap; }
+  .issue-row .actions a:hover { color: var(--gold-lt); text-decoration: underline; }
+  .issue-row .actions .dim { color: var(--muted); cursor: default; }
+
+  .page-header { margin-bottom: 1.25rem; }
+  .page-header h1 { font-size: 1.4rem; }
+  .page-header .meta { color: var(--muted); font-family: sans-serif; font-size: .85rem; margin-top: .3rem; }
+</style>
+
+<div class="browse-layout">
+
+  <aside class="vol-sidebar">
+    <h3>Volumes</h3>
+    <ul class="vol-list">
+      {% for v in volumes %}
+      <li>
+        <a href="/browse?vol={{ v['volume'] }}"
+           class="{{ 'active' if v['volume'] == current_vol }}">
+          Vol. {{ v['volume'] }}
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  </aside>
+
+  <div>
+    <div class="page-header">
+      <h1>Volume {{ current_vol }}</h1>
+      <div class="meta">
+        {{ issues | length }} issues &nbsp;·&nbsp;
+        {{ issues | selectattr('indexed', 'equalto', 1) | list | length }} indexed
+        &nbsp;·&nbsp;
+        {{ issues[0]['pub_date'] if issues }} → {{ issues[-1]['pub_date'] if issues }}
+      </div>
+    </div>
+
+    <div class="issue-list">
+      {% for issue in issues %}
+      <div class="issue-row {{ '' if issue['indexed'] else 'not-indexed' }}">
+        <div class="num">No. {{ issue['issue'] }}</div>
+        <div class="date">{{ issue['pub_date'] }}</div>
+        <div class="status">
+          {% if issue['indexed'] %}
+            <span class="badge gold">✓ Indexed</span>
+            {% if issue['page_count'] %}
+            <span class="badge" style="margin-left:.3rem">{{ issue['page_count'] }}pp</span>
+            {% endif %}
+          {% else %}
+            <span class="badge">Pending</span>
+          {% endif %}
+        </div>
+        <div class="actions">
+          {% if issue['indexed'] %}
+          <a href="/issue/{{ issue['id'] }}">Full text</a>
+          {% else %}
+          <span class="dim">—</span>
+          {% endif %}
+          <a href="{{ issue['url'] }}" target="_blank">PDF ↗</a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}

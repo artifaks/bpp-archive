@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Black Panther Newspaper Archive{% endblock %}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --black:   #0a0a0a;
+      --charcoal:#1c1c1c;
+      --panel:   #242424;
+      --border:  #333;
+      --gold:    #c9a84c;
+      --gold-lt: #e8c97a;
+      --red:     #b22222;
+      --text:    #e8e0d0;
+      --muted:   #888;
+      --mark-bg: #4a3800;
+      --mark-fg: #ffd966;
+    }
+
+    body {
+      font-family: 'Georgia', serif;
+      background: var(--black);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Nav ── */
+    nav {
+      background: var(--charcoal);
+      border-bottom: 2px solid var(--gold);
+      padding: 0 2rem;
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+      height: 56px;
+    }
+    nav .brand {
+      font-size: 1rem;
+      font-weight: bold;
+      letter-spacing: .08em;
+      color: var(--gold);
+      text-decoration: none;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    nav .brand span { color: var(--red); }
+    nav a {
+      color: var(--text);
+      text-decoration: none;
+      font-family: sans-serif;
+      font-size: .85rem;
+      letter-spacing: .05em;
+      opacity: .75;
+      transition: opacity .15s;
+    }
+    nav a:hover { opacity: 1; color: var(--gold-lt); }
+
+    /* search bar in nav */
+    nav form {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      margin-left: auto;
+    }
+    nav input[type=search] {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font-family: sans-serif;
+      font-size: .85rem;
+      padding: .4rem .75rem;
+      width: 220px;
+      outline: none;
+    }
+    nav input[type=search]:focus { border-color: var(--gold); }
+    nav button {
+      background: var(--gold);
+      border: none;
+      border-radius: 4px;
+      color: var(--black);
+      cursor: pointer;
+      font-family: sans-serif;
+      font-size: .8rem;
+      font-weight: bold;
+      padding: .4rem .9rem;
+      letter-spacing: .04em;
+    }
+    nav button:hover { background: var(--gold-lt); }
+
+    /* ── Layout ── */
+    main { max-width: 960px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+    h1 { font-size: 1.7rem; color: var(--gold); margin-bottom: .4rem; }
+    h2 { font-size: 1.2rem; color: var(--gold-lt); margin-bottom: 1rem; }
+    h3 { font-size: 1rem; color: var(--gold-lt); }
+
+    p { line-height: 1.65; color: var(--text); }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .card:hover { border-color: var(--gold); }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-block;
+      background: var(--charcoal);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: .75rem;
+      padding: .15rem .5rem;
+      color: var(--muted);
+    }
+    .badge.gold { border-color: var(--gold); color: var(--gold); }
+    .badge.red  { border-color: var(--red);  color: var(--red); }
+
+    /* ── Snippet highlight ── */
+    mark {
+      background: var(--mark-bg);
+      color: var(--mark-fg);
+      padding: 0 2px;
+      border-radius: 2px;
+      font-style: normal;
+    }
+
+    /* ── Progress bar ── */
+    .progress-wrap {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      height: 8px;
+      overflow: hidden;
+      margin: .4rem 0 .25rem;
+    }
+    .progress-bar {
+      background: var(--gold);
+      height: 100%;
+      transition: width .6s ease;
+    }
+
+    /* ── Links ── */
+    a { color: var(--gold); text-decoration: none; }
+    a:hover { color: var(--gold-lt); text-decoration: underline; }
+
+    .muted { color: var(--muted); font-family: sans-serif; font-size: .85rem; }
+
+    /* ── Pagination ── */
+    .pagination { display: flex; gap: .5rem; margin-top: 1.5rem; align-items: center; }
+    .pagination a, .pagination span {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font-family: sans-serif;
+      font-size: .85rem;
+      padding: .35rem .75rem;
+      text-decoration: none;
+    }
+    .pagination a:hover { border-color: var(--gold); color: var(--gold); }
+    .pagination .current { border-color: var(--gold); color: var(--gold); }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="brand" href="/"><span>★</span> Black Panther Archive</a>
+  <a href="/">Home</a>
+  <a href="/browse">Browse</a>
+  <form action="/search" method="get">
+    <input type="search" name="q" placeholder="Search content…"
+           value="{{ request.args.get('q', '') }}">
+    <button type="submit">Search</button>
+  </form>
+</nav>
+
+<main>
+  {% block content %}{% endblock %}
+</main>
+
+<script>
+  // Live indexing progress update
+  function refreshProgress() {
+    const bar = document.getElementById('progress-bar');
+    const label = document.getElementById('progress-label');
+    if (!bar) return;
+    fetch('/api/progress')
+      .then(r => r.json())
+      .then(d => {
+        const pct = Math.round(d.indexed / d.total * 100);
+        bar.style.width = pct + '%';
+        if (label) label.textContent = d.indexed + ' of ' + d.total + ' issues indexed (' + pct + '%)';
+        if (d.indexed < d.total) setTimeout(refreshProgress, 8000);
+      });
+  }
+  refreshProgress();
+</script>
+
+</body>
+</html>

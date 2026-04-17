@@ -1,0 +1,10 @@
+*.db
+*.pdf
+*.log
+*.log.txt
+indexing_log.txt
+Black_Panther_Newspaper_Directory.csv
+__pycache__/
+*.pyc
+.env
+nohup.out
